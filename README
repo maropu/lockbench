@@ -1,0 +1,33 @@
+A benchmark for a variety of spin-lock implementation using x86 primitives.
+These variations are as follows:
+
+* lock_none.h
+        To provide baseline perfor mance compared to other implementation.
+
+* lock_tas.h
+        Naive spin-lock implementaiont with test-and-set('xchg').
+        
+* lock_tas_nopause.h
+        Based on lock_tas.h, 'pause' is removed.
+
+* lock_tas_mov.h
+        Based on lock_tas.h, lock_release() is improved with 'mov'
+        taking advantage of 'mov' with release barriers (x86 only).
+
+* lock_cas.h
+        Naive spin-lock implementaiont with compare-and-swap('cmpxchg').
+        
+* lock_cas_none.h
+        Based on lock_cas.h, lock-prefix is removed.
+        Although serialization might not be broken, a good estimator for bus-lock costs.
+        
+* lock_cas_mov.h
+        Based on lock_cas.h, lock_release() is improved with 'mov'
+        taking advantage of 'mov' with release barriers (x86 only).
+
+* lock_cas_nopause.h
+        Based on lock_cas.h, 'pause' is removed.
+
+* lock_cas_mfence.h
+        Based on lock_cas.h, 'lock' is replaced with 'mfence'.
+        I wonder if it could be serialized...
