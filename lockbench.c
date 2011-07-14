@@ -40,6 +40,11 @@
                 __asm__ __volatile__ ("rdtsc" : "=A" (t));                              \
         } while (0)
 
+#define _pointer_align(p, a)            \
+                (__typeof__(p))((uint32_t)((uint8_t *)p + (a - 1)) & ~(a - 1))
+
+#define _cacheline_align(p) _pointer_align(p, CACHELINE_SZ)
+
 typedef union {
 	unsigned long long      value;
 	char    pad[CACHELINE_SZ];
@@ -69,8 +74,9 @@ int main(int argc, char **argv)
         long long int   et;
         long long int   total_counter;
         char            *end;
-        struct _thread_arg      th[WORKERS_MAX];
-        pthread_t               tid[WORKERS_MAX];
+        struct _thread_arg      *th;
+        struct _thread_arg      *_th;
+        pthread_t               *tid;
 
         /* Parameter settings */
         if (argc < 5)
@@ -103,7 +109,14 @@ int main(int argc, char **argv)
                 eoutput("too many locks");
 
         /* Initialization */
-        memset(&th, 0x00, sizeof(struct _thread_arg) * LOCKS_MAX);
+        tid = malloc(sizeof(pthread_t) * N);
+        _th = malloc(sizeof(struct _thread_arg) * L + CACHELINE_SZ - 1);
+
+        if (tid == NULL || _th == NULL)
+                eoutput("Can't allocate memories");
+
+        th = _cacheline_align(_th);
+        memset(th, 0x00, sizeof(struct _thread_arg) * L);
 
         /* Timer checkpoint */
         _rdtsc(st);
@@ -139,6 +152,9 @@ int main(int argc, char **argv)
         printf("Averaged per-cycle rdtsc: %.1e\n", (double)(et - st) / ((double)total_counter / L));
         printf("Averaged cycle throughput: %.1e\n", ((double)total_counter / L) / (et - st));
 
+        free(_th);
+        free(tid);
+
         return EXIT_SUCCESS;
 }
 
@@ -168,19 +184,64 @@ _start_worker(void *arg)
         int     i;
         struct _thread_arg      *p;
 
+#ifdef DEBUG
+        volatile counter_t      v1;
+        volatile counter_t      v2;
+#endif /* DEBUG */
+
         p = (struct _thread_arg *)arg;
 
         if (count_per_cycle == 1) {
                 while (1) {
                         lock_acquire(&p->lock_t.lock);
+#ifdef DEBUG
+                        v1.value = p->counter.value;
+
+                        /* Pause a while */
+                        __asm__ __volatile__( "rep; nop" ::: "memory" );
+
+                        v2.value = p->counter.value;
+
+                        if (v1.value != v2.value)
+                                eoutput("Can't do locks correctly");
+#endif /* DEBUG */
                         ++(p->counter.value);
+#ifdef DEBUG
+                        v2.value = p->counter.value;
+
+                        /* Pause a while */
+                        __asm__ __volatile__( "rep; nop" ::: "memory" );
+
+                        if (v1.value + 1 != v2.value)
+                                eoutput("Can't do locks correctly");
+#endif /* DEBUG */
                         lock_release(&p->lock_t.lock);
                 }
         } else {
                 while (1) {
                         lock_acquire(&p->lock_t.lock);
+#ifdef DEBUG
+                        v1.value = p->counter.value;
+
+                        /* Pause a while */
+                        __asm__ __volatile__( "rep; nop" ::: "memory" );
+
+                        v2.value = p->counter.value;
+
+                        if (v1.value != v2.value)
+                                eoutput("Can't do locks correctly");
+#endif /* DEBUG */
                         for (i = 0; i < count_per_cycle; i++)
                                 ++(p->counter.value);
+#ifdef DEBUG
+                        v2.value = p->counter.value;
+
+                        /* Pause a while */
+                        __asm__ __volatile__( "rep; nop" ::: "memory" );
+
+                        if (v1.value + count_per_cycle != v2.value)
+                                eoutput("Can't do locks correctly");
+#endif /* DEBUG */
                         lock_release(&p->lock_t.lock);
                 }
         }
