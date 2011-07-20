@@ -10,7 +10,7 @@ T=10
 N="1 2 4 8 16"
 
 # lock-type to test
-I="none tas tas_mov tas_nopause cas_nolock cas cas_mfence cas_mov cas_nopause"
+I="none mutex tas tas_mov tas_nopause cas_nolock cas cas_mfence cas_mov cas_nopause"
 
 # Build
 for impl in $I; do

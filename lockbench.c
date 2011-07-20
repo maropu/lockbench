@@ -118,6 +118,9 @@ int main(int argc, char **argv)
         th = _cacheline_align(_th);
         memset(th, 0x00, sizeof(struct _thread_arg) * L);
 
+        for (i = 0; i < L; i++)
+                lock_init(&th->lock_t.lock);
+
         /* Timer checkpoint */
         _rdtsc(st);
 

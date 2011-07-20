@@ -12,7 +12,7 @@
 typedef unsigned char   lock_t;
 
 static inline void
-locks_init(int nlocks, int nworkers)
+lock_init(lock_t *lock)
 {
         /* None */
 }
