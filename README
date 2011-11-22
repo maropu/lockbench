@@ -31,3 +31,10 @@ These variations are as follows:
 * lock_cas_mfence.h
         Based on lock_cas.h, 'lock' is replaced with 'mfence'.
         I wonder if it could be serialized...
+
+* lock_mutex.h
+        A mutex implementation of GNU PTHREAD (pthread_mutex_lock).
+
+* lock_pthread_lock.h
+        A mutex implementation of GNU PTHREAD (pthread_spinlock).
+        
