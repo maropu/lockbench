@@ -16,7 +16,7 @@ typedef pthread_spinlock_t      lock_t;
 static inline void
 lock_init(lock_t *lock)
 {
-        pthread_spin_init(lock, NULL);
+        pthread_spin_init(lock, 0);
 }
 
 static inline void

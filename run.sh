@@ -4,10 +4,10 @@
 D=1
 
 # Number of seconds to run each test
-T=10
+T=1
 
 # Numbers of workers
-N="1 2 4 8 16"
+N="1 2 4"
 
 # lock-type to test
 I="none mutex tas tas_mov tas_nopause cas_nolock cas cas_mfence cas_mov cas_nopause pthread_spinlock"
@@ -19,7 +19,7 @@ done
 
 # Output headers
 echo "$D counter increments per cycle"
-echo "---- show cycle throughput ----"
+echo "---- show throughputs ----"
 
 for n in $N; do
 	echo -en "$n"'\t\t'
@@ -30,7 +30,7 @@ echo 'worker'
 for impl in $I; do
 	for n in $N; do
 		./lockbench_$impl $D $n $T 1 > temp.output || exit 1
-		sed -n 's/^Averaged cycle throughput: \(.*\)$/\1/p' < temp.output | xargs echo -n
+		sed -n 's/^Averaged throughput: \(.*\)$/\1/p' < temp.output | xargs echo -n
 		echo -en '\t\t'
 	done
 	echo $impl

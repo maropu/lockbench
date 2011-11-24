@@ -10,8 +10,8 @@
 #error "gcc is required."
 #endif
 
-#if !defined(__i686__)
-#error "micro architecture is not supported."
+#if !defined(__i686__) && !defined(__x86_64)
+#error "This micro architecture is not supported."
 #endif
 
 #if !defined(LOCKIMPL)
@@ -34,23 +34,26 @@
 #define WORKERS_MAX     32
 #define LOCKS_MAX       4
 
-#define _rdtsc(t)       \
-        do {            \
-                __asm__ __volatile__ ("cpuid" : : : "eax", "ebx", "ecx", "edx");        \
-                __asm__ __volatile__ ("rdtsc" : "=A" (t));                              \
+#ifdef USERDTSC
+ #define __ret_current_time(t)  \
+        do {                    \
+                __asm__ __volatile__ ("rdtsc" : "=A" (t));      \
         } while (0)
-
-#define _pointer_align(p, a)            \
-                (__typeof__(p))((uint32_t)((uint8_t *)p + (a - 1)) & ~(a - 1))
-
-#define _cacheline_align(p) _pointer_align(p, CACHELINE_SZ)
+#elif USERDTSCP
+ #define __ret_current_time(t)  \
+        do {                    \
+                __asm__ __volatile__ ("rdtsc" : "=A" (t));      \
+        } while (0)
+#else
+ #define __ret_current_time(t)  t = clock();
+#endif
 
 typedef union {
 	unsigned long long      value;
 	char    pad[CACHELINE_SZ];
 } counter_t;
 
-struct _thread_arg {
+struct __thread_arg {
         union {
                 lock_t          lock;
                 char    pad[CACHELINE_SZ];
@@ -59,8 +62,8 @@ struct _thread_arg {
         volatile counter_t      counter;
 };
 
-static void _usage(char *msg, ...);
-static void *_start_worker(void *arg)  __attribute__((noinline));
+static void __usage(char *msg, ...);
+static void *__start_worker(void *arg)  __attribute__((noinline));
 
 static int              count_per_cycle;
 
@@ -74,23 +77,23 @@ int main(int argc, char **argv)
         long long int   et;
         long long int   total_counter;
         char            *end;
-        struct _thread_arg      *th;
-        struct _thread_arg      *_th;
+        struct __thread_arg     *th;
+        struct __thread_arg     *_th;
         pthread_t               *tid;
 
         /* Parameter settings */
         if (argc < 5)
-                _usage(NULL);
+                __usage(NULL);
 
         count_per_cycle = strtol(argv[1], &end, 10);
 
         if ((*end != '\0') || (count_per_cycle <= 0) || (errno == ERANGE))
-                _usage("counter increments per cycle '%s' invalid", argv[1]);
+                __usage("counter increments per cycle '%s' invalid", argv[1]);
 
         N = strtol(argv[2], &end, 10);
 
         if ((*end != '\0') || (count_per_cycle <= 0) || (errno == ERANGE))
-		_usage("worker count '%s' invalid", argv[2]);
+		__usage("worker count '%s' invalid", argv[2]);
 
         if (N > WORKERS_MAX)
                 eoutput("too many workers");
@@ -98,35 +101,34 @@ int main(int argc, char **argv)
         T = strtol(argv[3], &end, 10);
 
         if ((*end != '\0') || (count_per_cycle <= 0) || (errno == ERANGE))
-		_usage("timeout '%s' invalid", argv[3]);
+		__usage("timeout '%s' invalid", argv[3]);
 
         L = strtol(argv[4], &end, 10);
 
         if ((*end != '\0') || (count_per_cycle <= 0) || (errno == ERANGE))
-		_usage("lock count '%s' invalid", argv[4]);
+		__usage("lock count '%s' invalid", argv[4]);
 
         if (L > LOCKS_MAX)
                 eoutput("too many locks");
 
         /* Initialization */
         tid = malloc(sizeof(pthread_t) * N);
-        _th = malloc(sizeof(struct _thread_arg) * L + CACHELINE_SZ - 1);
+        th = malloc(sizeof(struct __thread_arg) * L);
 
         if (tid == NULL || _th == NULL)
                 eoutput("Can't allocate memories");
 
-        th = _cacheline_align(_th);
-        memset(th, 0x00, sizeof(struct _thread_arg) * L);
+        memset(th, 0x00, sizeof(struct __thread_arg) * L);
 
         for (i = 0; i < L; i++)
                 lock_init(&th->lock_t.lock);
 
-        /* Timer checkpoint */
-        _rdtsc(st);
+        /* Timer start checkpoint */
+        __ret_current_time(st);
 
         /* Start workers */
         for (i = 0; i < N; i++)
-                pthread_create(&tid[i], NULL, _start_worker, &th[i / (N / L)]);
+                pthread_create(&tid[i], NULL, __start_worker, &th[i / (N / L)]);
 
 	/* Let workers run for a while */
 	sleep(T);
@@ -135,8 +137,8 @@ int main(int argc, char **argv)
         for (i = 0; i < N; i++)
                 pthread_cancel(tid[i]);
 
-        /* Timer checkpoint */
-        _rdtsc(et);
+        /* Timer end checkpoint */
+        __ret_current_time(et);
 
         /* Aggregate data */
         for (i = 0, total_counter = 0; i < L; i++)
@@ -145,17 +147,17 @@ int main(int argc, char **argv)
         /* Display data */
         for (i = 0; i < L; i++) {
                 printf("lock %d counter: %llu\n", i, th[i].counter.value);
-                printf("lock %d rdtsc: %lld\n", i, et - st);
-                printf("lock %d per-cycle rdtsc: %.1e\n", i, (double)(et - st) / th[i].counter.value);
-                printf("lock %d cycle throughput: %.1e\n", i, (double)th[i].counter.value / (et - st));
+                printf("lock %d ticks: %lld\n", i, et - st);
+                printf("lock %d per-cycle ticks: %.1e\n", i, (double)(et - st) / th[i].counter.value);
+                printf("lock %d throughput: %.1e\n", i, (double)th[i].counter.value / (et - st));
         }
 
         printf("---\n");
 
-        printf("Averaged per-cycle rdtsc: %.1e\n", (double)(et - st) / ((double)total_counter / L));
-        printf("Averaged cycle throughput: %.1e\n", ((double)total_counter / L) / (et - st));
+        printf("Averaged per-cycle ticks: %.1e\n", (double)(et - st) / ((double)total_counter / L));
+        printf("Averaged throughput: %.1e\n", ((double)total_counter / L) / (et - st));
 
-        free(_th);
+        free(th);
         free(tid);
 
         return EXIT_SUCCESS;
@@ -164,7 +166,7 @@ int main(int argc, char **argv)
 /*--- Intra functions below ---*/
 
 void
-_usage(char *msg, ...)
+__usage(char *msg, ...)
 {
         fprintf(stderr, "Usage: locks <increment per cycle> <worker count> <seconds> <lock count>\n");
 
@@ -182,17 +184,17 @@ _usage(char *msg, ...)
 }
 
 void *
-_start_worker(void *arg)
+__start_worker(void *arg)
 {
         int     i;
-        struct _thread_arg      *p;
+        struct __thread_arg      *p;
 
 #ifdef DEBUG
         volatile counter_t      v1;
         volatile counter_t      v2;
 #endif /* DEBUG */
 
-        p = (struct _thread_arg *)arg;
+        p = (struct __thread_arg *)arg;
 
         if (count_per_cycle == 1) {
                 while (1) {
